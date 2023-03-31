@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Mar 27 11:17:57 2023
+Created on Thu Mar 30 15:54:26 2023
+
+This class encompasses the GUI creation and usage for Piezo Control, 
+initialized in the main program.
+
+The .ui files were created and designed mainly using the PyQt5 Designer
+Application, and can be viewed/edited in said application as well for
+ease of use.
 
 @author: Anya
 """
-
-# TODO: Check whether it is worth accounting for the 0.05,6V voltage difference
-
-#%% Package imports for software operation
-# Need to check that 'ctypes' package is also installed to environment
-# If not, either add via Anaconda package installation system, or run
-#    pip install ctypes
-# NI-Visa and Thorlabs Kinesis should also be installed and up-to-date
-
 import os
 import time
 import sys
@@ -33,18 +31,8 @@ from System import Decimal  # necessary for real world units
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer
 
-#%%
-# Write and close the j-son file for saving the serial numbers of the piezo
-#   controllers.
+from KPZ101 import KPZ101
 
-# dictionary = {'serialX' : '29251927',
-#               'serialY' : '29251900'}
-
-# with open("saved_serial_numbers.json", "w") as outfile:
-#     json.dump(dictionary, outfile)
-
-#%%
-# Set-up the serial numbers for the two KPZ101s
 with open('saved_serial_numbers.json', 'r') as openfile:
  
     # Reading from json file
@@ -62,224 +50,21 @@ try:
 except:
     print('Need to set-up both KPZ101 serial numbers')
 
-#%%
-
-def main():
-    try:
-        startGUI()
-    except Exception as e:
-        print(e)
-
-class KPZ101:  
-    """
-    A class used to represent a Thorlabs KPZ101 device.
-    
-    All methods and functions are implemented separately inside class
-    in order to limit functionality.
-    
-    Attributes
-    ----------
-    device : KCubePiezo Object
-        The KPZ101 device associated with a given serial number
-        with which it is initialized
-    max_voltage : Decimal
-        The maximum voltage that the device may reach
-    cvoltage : Decimal
-        The current voltage of the KPZ101 device
-    jogsteps : ControlSettings::JogStepsStruct
-        The current jog step settings, the focus of the code (voltage jog step)
-        is accessible via jogsteps.VoltageStepSize
-    serial_no : String
-        The serial number with which the KPZ101 was initialized
-        
-    Methods
-    --------
-    getVoltage()
-    getVoltageFloat(int rounding)
-        Returns the current device voltage as a float, rounded to rounding digits
-    getMaxVoltage()
-    getJogSteps()
-    update()
-        Updates the cvoltage, mainly to reduce redundancy
-    setZero()
-        Sets the zero for the KPZ101 device
-    setVoltage(Decimal voltage)
-        Sets the current voltage to the new 'voltage',
-        0 < voltage < max_voltage
-        --> Note-to-self: voltage is changed almost immediately.
-    setJogSteps(Decimal new_step)
-        Sets the voltage jog step to new_step
-        0 < new_step < 10
-    jogVoltage(Boolean boolean)
-        Jogs the KPZ101 voltage by jogsteps.VoltageStepSize
-        If boolean == True, voltage increases.
-        If boolean == False, voltage decreases.
-    disconnect()
-        Stops the device polling and disconnects it from the computer
-    connect()
-    
-    disable()
-        If device.IsConnected == True, disables the device so that the voltage
-        is no longer being output
-    enable()
-    
-    stop()
-        
-    """
-    
-    def __init__(self, serial_no):
-        """
-        Parameters
-        ----------
-        serial_no : str
-            The serial number for the requested KPZ101 device
-
-        Raises
-        ------
-        Exception
-            If the device is not connected and/or registered by the computer,
-            raise exception
-
-        Returns
-        -------
-        None.
-
-        """
-        
-        self.serial_no = serial_no
-        
-        # Building Devices
-        DeviceManagerCLI.BuildDeviceList()
-    
-        # Check Device is being registered by computer
-        if DeviceManagerCLI.GetDeviceListSize() < 1:
-            raise Exception('No Device Available')
-            
-        # Created KCubePiezo device
-        self.device = KCubePiezo.CreateKCubePiezo(serial_no)
-        
-        # Verify device is connected past this point
-        if not self.device.IsConnected:
-            self.device.Connect(serial_no)
-            assert self.device.IsConnected is True
-        
-        self.device.StartPolling(250)  #250ms polling rate
-        time.sleep(0.5)
-        self.device.EnableDevice()
-        time.sleep(0.25)
-        
-        if not self.device.IsSettingsInitialized():
-            self.device.WaitForSettingsInitialized(10000)  # 10 second timeout
-            assert self.device.IsSettingsInitialized() is True
-        
-        # Set the max voltage, jog steps, and current voltage.
-        self.max_voltage = self.device.GetMaxOutputVoltage()
-        self.jogsteps = self.device.GetJogSteps()
-        self.cvoltage = self.device.GetOutputVoltage()
-        
-        print('Initialized', serial_no)
-        
-    def getVoltage(self):
-        return self.cvoltage
-    
-    def getVoltageFloat(self, rounding):
-        return round(float(self.device.GetOutputVoltage().ToString()), rounding)
-    
-    def getMaxVoltage(self):
-        return self.device.GetMaxOutputVoltage()
-        
-    def getJogSteps(self):
-        # REMEMBER: This is a JogStepStruct OBJECT, not Decimal!!!!
-        return self.jogsteps
-    
-    def isConnected(self):
-        return self.device.IsConnected
-    
-    def update(self):
-        # Update the current voltage 
-        self.cvoltage = self.device.GetOutputVoltage()
-        
-    def setZero(self):
-        # Set device to zero voltage
-        self.device.SetZero()
-        
-    def setVoltage(self, voltage):
-        # Given Decimal 0 <= voltage <= max_voltage, update current voltage of KPZ101 to voltage
-        if voltage >= Decimal(0) and voltage <= self.max_voltage:
-            self.device.SetOutputVoltage(voltage)
-            time.sleep(1)
-        
-    def setJogSteps(self, new_step):
-        # Given Decimal 0 <= new_step <= 10V, update voltage jog step to new_step
-        if new_step >= Decimal(0) and new_step <= Decimal(10):
-            self.jogsteps.VoltageStepSize = new_step
-            self.device.SetJogSteps(self.jogsteps)
-            time.sleep(0.25)
-        
-    def jogVoltage(self, boolean):
-        # Given Boolean boolean, jog the voltage by the voltage jog step.
-        #  If boolean == True: Increase voltage
-        #  If boolean == False: Decrease voltage
-        Increase = Settings.ControlSettings.PiezoJogDirection.Increase
-        Decrease = Settings.ControlSettings.PiezoJogDirection.Decrease
-        if self.cvoltage >= Decimal(0) and self.cvoltage <= self.max_voltage:
-            if boolean:
-                self.device.Jog(Increase)
-                
-            else:
-                self.device.Jog(Decrease)
-                
-    def disconnect(self):
-        # Disconnect the Piezo Controller, but do not disable it
-        if self.device.IsConnected:
-            self.device.StopPolling()
-            time.sleep(1)
-            self.device.Disconnect(False)
-        
-    def connect(self):        
-        # Verify device is connected past this point
-        # self.device = KCubePiezo.CreateKCubePiezo(self.serial_no)
-        
-        if not self.device.IsConnected:
-            self.device.ConnectDevice(self.serial_no)
-            assert self.device.IsConnected is True
-            
-        self.device.StartPolling(250)
-        time.sleep(0.5)
-        self.device.EnableDevice()
-        time.sleep(0.25)
-        
-        if not self.device.IsSettingsInitialized():
-            self.device.WaitForSettingsInitialized(10000)  # 10 second timeout
-            assert self.device.IsSettingsInitialized() is True
-        
-    def disable(self):
-        self.device.DisableDevice()
-        time.sleep(0.25)
-        
-    def enable(self):
-        self.device.EnableDevice()
-        time.sleep(0.25)
-        
-    def stop(self):
-        self.device.DisableDevice()
-        self.device.StopPolling()
-        time.sleep(1)
-        self.device.Disconnect(False)
-
 class Ui(QtWidgets.QMainWindow):
     
     def __init__(self):
         super(Ui, self).__init__()
         uic.loadUi('gui_v2.ui', self)
+        self.popupWindow = None # Place-holder for the pop-up window
         self.stylesheetlist = ['#f6cefc', '#ffbacd', '#fbdd7e', '#fffd74',
                             '#cffdbc', '#bdf6fe']
         self.count = 0
         
         self.setStyleSheet("background-color: #f6cefc;")
         
-        self.KPZ101_x = KPZ101(serial_no_x)
-        self.KPZ101_y = KPZ101(serial_no_y)
+        self.serial_x = serial_no_x
+        self.serial_y = serial_no_y
+        self.initializeKPZs()
         # self.current_voltage = 0 # Current voltage of x direction piezo
         # self.current_jog_step = 0
         
@@ -340,6 +125,10 @@ class Ui(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self.checkJogLimitY)
         
         self.show()
+        
+    def initializeKPZs(self):
+        self.KPZ101_x = KPZ101(self.serial_x)
+        self.KPZ101_y = KPZ101(self.serial_y)
         
     def update(self, device):
         kpz = device[0]
@@ -491,7 +280,13 @@ class Ui(QtWidgets.QMainWindow):
         
     def openPopup(self):
         self.popupWindow = SerialNumberPopup()
+        self.popupWindow.setSerials(self.serial_x, self.serial_y)
+        self.popupWindow.saveClicked.connect(self.saveFromPopup)
         self.popupWindow.show()
+        
+    def saveFromPopup(self, new_serials):
+        # TODO : save the new serial numbers, re-initialize the kpzs
+        return None
     
     def closeEvent(self, event):
         if not self.KPZ101_x.isConnected():
@@ -507,34 +302,33 @@ class SerialNumberPopup(QtWidgets.QWidget):
         super().__init__()
         uic.loadUi('gui_popup_window.ui', self)
         self.setStyleSheet("background-color: #f6cefc;")
+        
+        onlyInt = QtWidgets.QIntValidator()
+        onlyInt.setRange(0, 4)
+        
         self.lineEditX.returnPressed.connect(self.inputLineEditX)
+        self.lineEditX.setMaxLength(8)
+        self.lineEditX.setValidator(onlyInt)
         self.lineEditY.returnPressed.connect(self.inputLineEditY)
+        self.lineEditY.setMaxLength(8)
+        self.lineEditY.setValidator(onlyInt)
         self.buttonSave.clicked.connect(self.saveSerials)
         self.buttonCancel.clicked.connect(self.close)
+    
+    def setSerials(self, serial_x, serial_y):
+        self.serial_x = serial_x
+        self.serial_y = serial_y
         
-        self.serialnox = serial_no_x
-        self.serialnoy = serial_no_y
-        
-        self.lineEditX.setText(self.serialnox)
-        self.lineEditY.setText(self.serialnoy)
+        self.lineEditX.setText(self.serial_x)
+        self.lineEditY.setText(self.serial_y)
         
     def inputLineEditX(self):
-        self.serialnox = self.lineEditX.text()
-        print(self.serialnox)
+        self.serial_x = self.lineEditX.text()
         
     def inputLineEditY(self):
-        self.serialnoy = self.lineEditY.text()
-        print(self.serialnoy)
+        self.serial_y = self.lineEditY.text()
         
     def saveSerials(self):
+        new_serials = [self.lineEditX.text(), self.lineEditY.text()]
+        self.saveClicked.emit(new_serials)
         self.close()
-    
-        
-        
-def startGUI():
-    app = QtWidgets.QApplication(sys.argv)
-    window = Ui()
-    app.exec_()
-
-startGUI()
-    
