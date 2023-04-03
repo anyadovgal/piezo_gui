@@ -17,38 +17,13 @@ import sys
 import clr
 import json
 
-clr.AddReference("C:\\Program Files\\Thorlabs\\Kinesis\\Thorlabs.MotionControl.DeviceManagerCLI.dll")
-clr.AddReference("C:\\Program Files\\Thorlabs\\Kinesis\\Thorlabs.MotionControl.GenericMotorCLI.dll")
-clr.AddReference("C:\\Program Files\\Thorlabs\\Kinesis\\ThorLabs.MotionControl.KCube.PiezoCLI.dll")
-clr.AddReference("C:\\Program Files\\Thorlabs\\Kinesis\\ThorLabs.MotionControl.GenericPiezoCLI.dll")
-from Thorlabs.MotionControl.DeviceManagerCLI import *
-from Thorlabs.MotionControl.GenericMotorCLI import *
-from Thorlabs.MotionControl.KCube.PiezoCLI import *
-from Thorlabs.MotionControl.GenericPiezoCLI import Piezo
-import Thorlabs.MotionControl.GenericPiezoCLI.Settings as Settings
 from System import Decimal  # necessary for real world units
 
-from PyQt5 import QtWidgets, uic
+from PyQt5 import QtWidgets, uic, QtGui, QtCore
 from PyQt5.QtCore import QTimer
 
 from KPZ101 import KPZ101
-
-with open('saved_serial_numbers.json', 'r') as openfile:
- 
-    # Reading from json file
-    json_object = json.load(openfile)
- 
-serial_no_x = json_object['serialX']
-serial_no_y = json_object['serialY']
-
-# serial_no_x = '29251927'
-# serial_no_y = '29251900' 
-
-try:
-    assert (serial_no_x.isnumeric() & (len(serial_no_x) == 8))
-    assert (serial_no_y.isnumeric() & (len(serial_no_y) == 8))
-except:
-    print('Need to set-up both KPZ101 serial numbers')
+from Exceptions import *
 
 class Ui(QtWidgets.QMainWindow):
     
@@ -62,9 +37,9 @@ class Ui(QtWidgets.QMainWindow):
         
         self.setStyleSheet("background-color: #f6cefc;")
         
-        self.serial_x = serial_no_x
-        self.serial_y = serial_no_y
+        self.loadSerials()
         self.initializeKPZs()
+
         # self.current_voltage = 0 # Current voltage of x direction piezo
         # self.current_jog_step = 0
         
@@ -87,7 +62,7 @@ class Ui(QtWidgets.QMainWindow):
         self.direction_stateX = True
         
         #Set-up jog-steps upon initialization
-        jogstepx = float(self.KPZ101_x.getJogSteps().VoltageStepSize.ToString())
+        jogstepx = float(self.KPZ101_x.getJogSteps().ToString())
         self.lcdNumberCJX.display(jogstepx)
 
         ## GUI Buttons for Y (Vertical) Piezo Controller
@@ -109,7 +84,7 @@ class Ui(QtWidgets.QMainWindow):
         self.direction_stateY = True
         
         #Set-up jog-steps upon initialization
-        jogstepy = float(self.KPZ101_y.getJogSteps().VoltageStepSize.ToString())
+        jogstepy = float(self.KPZ101_y.getJogSteps().ToString())
         self.lcdNumberCJY.display(jogstepy)
 
         #====================================================================
@@ -123,12 +98,47 @@ class Ui(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self.checkJogLimitX)
         self.timer.timeout.connect(lambda : self.update(self.kpzy))
         self.timer.timeout.connect(self.checkJogLimitY)
+        self.timer.timeout.connect(self.testingUpdate)
         
         self.show()
         
-    def initializeKPZs(self):
-        self.KPZ101_x = KPZ101(self.serial_x)
-        self.KPZ101_y = KPZ101(self.serial_y)
+    def loadSerials(self):
+        with open('saved_serial_numbers.json', 'r') as openfile:
+            json_object = json.load(openfile)
+         
+        self.serial_x = json_object['serialX']
+        self.serial_y = json_object['serialY']
+        
+    def initializeKPZs(self, serial_x = None, serial_y = None):
+        if serial_x == None:
+            serial_x = self.serial_x
+        if serial_y == None:
+            serial_y = self.serial_y
+        # try:
+        #     assert (self.serial_x.isnumeric() & (len(self.serial_x) == 8))
+        #     assert (self.serial_y.isnumeric() & (len(self.serial_y) == 8))
+        # except:
+        #     print('Need to set-up both KPZ101 serial numbers')
+        
+        try:
+            self.KPZ101_x = KPZ101(serial_x)
+            self.KPZ101_y = KPZ101(serial_y)
+        except ValueError as e:
+            if e == MisMatchSerialError: # If the recorded serial # is not right
+                attempt = e.attempt # The serial number that is not connected
+                actual = e.actual # The serial numbers that are connected
+            
+            elif e == DeviceCountError: # If the connected devices is < 2
+                count = e.count # Num. of devices actually connected
+            print(e.message)
+        
+    def testingUpdate(self):
+        color = self.stylesheetlist[self.count]
+        self.setStyleSheet("background-color: " + color + ";")
+        if self.count < 5:
+            self.count+=1
+        else:
+            self.count = 0 
         
     def update(self, device):
         kpz = device[0]
@@ -136,16 +146,7 @@ class Ui(QtWidgets.QMainWindow):
         if kpz.isConnected():
             kpz.update()
             current_voltage = kpz.getVoltageFloat(2)
-            lcdDisplay.display(current_voltage)
-            
-        # if current_voltage < 0.1: #make button go away and come back
-            # addsa
-            # color = self.stylesheetlist[self.count]
-            # self.setStyleSheet("background-color: " + color + ";")
-            # if self.count < 5:
-            #     self.count+=1
-            # else:
-            #     self.count = 0         
+            lcdDisplay.display(current_voltage)   
         
     def setZero(self, device):
         kpz = device[0]
@@ -235,7 +236,7 @@ class Ui(QtWidgets.QMainWindow):
     def checkJogLimitX(self):
         if self.KPZ101_x.isConnected():
             current_voltage = self.KPZ101_x.getVoltage()
-            current_jog = self.KPZ101_x.getJogSteps().VoltageStepSize
+            current_jog = self.KPZ101_x.getJogSteps()
             max_voltage = self.KPZ101_x.getMaxVoltage()
             if current_voltage <= current_jog:
                 if self.direction_stateX:
@@ -258,7 +259,7 @@ class Ui(QtWidgets.QMainWindow):
     def checkJogLimitY(self):
         if self.KPZ101_y.isConnected():
             current_voltage = self.KPZ101_y.getVoltage()
-            current_jog = self.KPZ101_y.getJogSteps().VoltageStepSize
+            current_jog = self.KPZ101_y.getJogSteps()
             max_voltage = self.KPZ101_y.getMaxVoltage()
             if current_voltage <= current_jog:
                 if self.direction_stateY:
@@ -282,9 +283,27 @@ class Ui(QtWidgets.QMainWindow):
         self.popupWindow = SerialNumberPopup()
         self.popupWindow.setSerials(self.serial_x, self.serial_y)
         self.popupWindow.saveClicked.connect(self.saveFromPopup)
+        # Set the main window to pause while the pop-up is open, then to 
+        #   re-start when the pop-up closes
+        self.timer.stop()
+        self.popupWindow.setCloseEvent(lambda : self.timer.start(1000))
         self.popupWindow.show()
         
     def saveFromPopup(self, new_serials):
+        serials = [self.KPZ101_x.getSerial(), self.KPZ101_y.getSerial()]
+        # for i in range(2):
+        #     if new_serials[i] != serials[i]:
+        #         self.KPZ101_x.stop()
+        #         self.KPZ101_y.stop()
+        #         self.initializeKPZs(new_serials[0], new_serials[1])
+        #         print(new_serials)
+        """
+        basically if new[i] != old[i], first disconnect (if connected)
+        & stop old[i] completely, then try to create a new KPZ101().
+        i = 0 replaces x, 1 replaces y. Then, re-write the json
+        with the serial #s that are currently attached.
+        """
+                
         # TODO : save the new serial numbers, re-initialize the kpzs
         return None
     
@@ -298,22 +317,25 @@ class Ui(QtWidgets.QMainWindow):
         print('App closed')
         
 class SerialNumberPopup(QtWidgets.QWidget):
+    saveClicked = QtCore.pyqtSignal(list)
+    
     def __init__(self):
         super().__init__()
         uic.loadUi('gui_popup_window.ui', self)
         self.setStyleSheet("background-color: #f6cefc;")
         
-        onlyInt = QtWidgets.QIntValidator()
-        onlyInt.setRange(0, 4)
+        onlyInt = QtGui.QIntValidator()
+        onlyInt.setRange(0, 99999999)
         
-        self.lineEditX.returnPressed.connect(self.inputLineEditX)
-        self.lineEditX.setMaxLength(8)
+        self.lineEditX.editingFinished.connect(self.inputLineEditX)
         self.lineEditX.setValidator(onlyInt)
-        self.lineEditY.returnPressed.connect(self.inputLineEditY)
-        self.lineEditY.setMaxLength(8)
+        self.lineEditY.editingFinished.connect(self.inputLineEditY)
         self.lineEditY.setValidator(onlyInt)
         self.buttonSave.clicked.connect(self.saveSerials)
         self.buttonCancel.clicked.connect(self.close)
+    
+    def setCloseEvent(self, fnc):
+        self.extraEvent = fnc
     
     def setSerials(self, serial_x, serial_y):
         self.serial_x = serial_x
@@ -332,3 +354,7 @@ class SerialNumberPopup(QtWidgets.QWidget):
         new_serials = [self.lineEditX.text(), self.lineEditY.text()]
         self.saveClicked.emit(new_serials)
         self.close()
+        
+    def closeEvent(self, event):
+        self.extraEvent()
+        event.accept()

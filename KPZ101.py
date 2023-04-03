@@ -4,7 +4,7 @@ Created on Thu Mar 30 15:49:03 2023
 
 This is the KPZ101 Device Class, to be used in conjunction with the GUI for
 Piezo Controller control, however it may be used by itself for KPZ101 control
-in Python software.
+in Python software - Simply comment out the catchNotEnoughDevices() method.
 
 All information is found from the Thorlabs Motion Control Dot Net API
 reference information.
@@ -29,6 +29,8 @@ from Thorlabs.MotionControl.KCube.PiezoCLI import *
 from Thorlabs.MotionControl.GenericPiezoCLI import Piezo
 import Thorlabs.MotionControl.GenericPiezoCLI.Settings as Settings
 from System import Decimal  # necessary for real world units
+
+from Exceptions import *
 
 class KPZ101:  
     """
@@ -121,7 +123,9 @@ class KPZ101:
         
         # Building Devices
         DeviceManagerCLI.BuildDeviceList()
-    
+        self.catchNotEnoughDevices()
+        self.catchMisMatchedSerial()
+        
         # Check Device is being registered by computer
         if DeviceManagerCLI.GetDeviceListSize() < 1:
             raise Exception('No Device Available')
@@ -129,14 +133,28 @@ class KPZ101:
         # Created KCubePiezo device
         self.device = KCubePiezo.CreateKCubePiezo(serial_no)
         
-        self.connect()
+        self.initialConnect()
         
-        # Set the max voltage, jog steps, and current voltage.
+        print('Initialized', serial_no)
+        
+        #======================================================
         self.max_voltage = self.device.GetMaxOutputVoltage()
         self.jogsteps = self.device.GetJogSteps()
         self.cvoltage = self.device.GetOutputVoltage()
         
-        print('Initialized', serial_no)
+    def catchNotEnoughDevices(self):
+        i = DeviceManagerCLI.GetDeviceListSize()
+        if i <= 1:
+            raise DeviceCountError(i)
+        
+    def catchMisMatchedSerial(self):
+        if not DeviceManagerCLI.IsDeviceConnected(self.serial_no):
+            connected = [DeviceManagerCLI.GetDeviceList()[0], DeviceManagerCLI.GetDeviceList[1]]
+            raise MisMatchSerialError(self.serial_no, connected)
+        
+    def getSerial(self):
+        deviceInfo = self.device.GetDeviceInfo()
+        return str(deviceInfo.SerialNumber)
         
     def getVoltage(self):
         return self.cvoltage
@@ -148,12 +166,25 @@ class KPZ101:
         return self.device.GetMaxOutputVoltage()
         
     def getJogSteps(self):
-        # REMEMBER: This is a JogStepStruct OBJECT, not Decimal!!!!
-        #   Important number is self.jogsteps.VoltageStepSize
-        return self.jogsteps
+        return self.jogsteps.VoltageStepSize
     
     def isConnected(self):
         return self.device.IsConnected
+    
+    def initialConnect(self):
+        # TODO: Simplify this method with self.connect()
+        if not self.device.IsConnected:
+            self.device.Connect(self.serial_no)
+            assert self.device.IsConnected is True
+            
+        self.device.StartPolling(250)
+        time.sleep(0.5)
+        self.device.EnableDevice()
+        time.sleep(0.25)
+        
+        if not self.device.IsSettingsInitialized():
+            self.device.WaitForSettingsInitialized(10000)  # 10 second timeout
+            assert self.device.IsSettingsInitialized() is True
     
     def update(self):
         """
@@ -268,7 +299,6 @@ class KPZ101:
         """
         if not self.device.IsConnected:
             self.device.ConnectDevice(self.serial_no)
-            time.sleep(0.1)
             assert self.device.IsConnected is True
             
         self.device.StartPolling(250)
