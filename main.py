@@ -11,11 +11,15 @@ Dependencies are the Thorlabs Kinesis software - must be installed for use of
 driver (.dll) files, NI-Visa for Piezo Controller connection, as well as 
 the ctypes Python package since the Thorlabs software is optimized for C.
 
+NOTE:
+-------------
+Restart the kernel when you run the code - otherwise the imports get
+messed up due to mainly the drivers. PyQt5 can also cause some problems
+if the kernel is not restarted.
 
-@author: Anya
+@author: Anya Dovgal
 """
 
-# TODO: Check whether it is worth accounting for the 0.05,6V voltage difference
 
 #%% Package imports for software operation
 # Need to check that 'ctypes' package is also installed to environment
@@ -29,44 +33,15 @@ import json
 
 from PyQt5 import QtWidgets, uic
 
-from KPZ101 import KPZ101
-from GUI import *
-#%%
-# Write and close the j-son file for saving the serial numbers of the piezo
-#   controllers.
-
-# dictionary = {'serialX' : '29251927',
-#               'serialY' : '29251900'}
-
-# with open("saved_serial_numbers.json", "w") as outfile:
-#     json.dump(dictionary, outfile)
-
-#%%
-# Set-up the serial numbers for the two KPZ101s
-with open('saved_serial_numbers.json', 'r') as openfile:
- 
-    # Reading from json file
-    json_object = json.load(openfile)
- 
-serial_no_x = json_object['serialX']
-serial_no_y = json_object['serialY']
-
-# serial_no_x = '29251927'
-# serial_no_y = '29251900' 
-
-try:
-    assert (serial_no_x.isnumeric() & (len(serial_no_x) == 8))
-    assert (serial_no_y.isnumeric() & (len(serial_no_y) == 8))
-except:
-    print('Need to set-up both KPZ101 serial numbers')
+#from KPZ101 import KPZ101
+from GUI import Ui
 
 #%%
 
 def main():
-    try:
-        startGUI()
-    except Exception as e:
-        print(e)    
+    """ Starts the application for Piezo Controller control.
+    """
+    startGUI() 
         
         
 def startGUI():
@@ -74,5 +49,6 @@ def startGUI():
     window = Ui()
     app.exec_()
 
-startGUI()
+if __name__ == '__main__':
+    sys.exit(main())
     

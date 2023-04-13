@@ -2,7 +2,7 @@
 """
 Created on Fri Mar 31 15:08:15 2023
 
-@author: Anya
+@author: Anya Dovgal
 """
 
 class MisMatchSerialError(ValueError):

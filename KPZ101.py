@@ -4,15 +4,17 @@ Created on Thu Mar 30 15:49:03 2023
 
 This is the KPZ101 Device Class, to be used in conjunction with the GUI for
 Piezo Controller control, however it may be used by itself for KPZ101 control
-in Python software - Simply comment out the catchNotEnoughDevices() method.
+in Python software - Simply comment out the catchNotEnoughDevices() method,
+as this is only for use with the GUI.
 
 All information is found from the Thorlabs Motion Control Dot Net API
-reference information.
+reference information, which can be located in the Thorlabs/Kinesis directory
+on the computer.
 
 Original program is built off of the KPZ101 example from
 https://github.com/Thorlabs/Motion_Control_Examples.
 
-@author: Anya
+@author: Anya Dovgal
 """
 import os
 import time
@@ -149,7 +151,7 @@ class KPZ101:
         
     def catchMisMatchedSerial(self):
         if not DeviceManagerCLI.IsDeviceConnected(self.serial_no):
-            connected = [DeviceManagerCLI.GetDeviceList()[0], DeviceManagerCLI.GetDeviceList[1]]
+            connected = [DeviceManagerCLI.GetDeviceList()[0], DeviceManagerCLI.GetDeviceList()[1]]
             raise MisMatchSerialError(self.serial_no, connected)
         
     def getSerial(self):
@@ -167,6 +169,9 @@ class KPZ101:
         
     def getJogSteps(self):
         return self.jogsteps.VoltageStepSize
+    
+    def getJogStepsFloat(self, rounding):
+        return round(float(self.jogsteps.VoltageStepSize.ToString()), rounding)
     
     def isConnected(self):
         return self.device.IsConnected
@@ -344,7 +349,5 @@ class KPZ101:
         None.
 
         """
-        self.device.DisableDevice()
-        self.device.StopPolling()
-        time.sleep(1)
-        self.device.Disconnect(False)
+        self.disable()
+        self.disconnect()
