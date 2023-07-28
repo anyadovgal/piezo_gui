@@ -1,1 +1,1 @@
-"# piezo_gui" 
+This is a repository to help with controlling a Thorlabs KPZ101 Piezo Driver. It is configured for 2D motion, and is about 90% complete, and mostly usable for motion.
